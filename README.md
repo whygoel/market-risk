@@ -1,572 +1,325 @@
 # Multi-Asset Risk Validation Suite
-## End-to-end market risk modelling, backtesting, and regulatory capital calculation under Basel III FRTB for an equally weighted portfolio of NIFTY 50, Gold, USDINR, US Treasuries, and Bitcoin.
+
+**End-to-End Market Risk Modelling, Backtesting, and Regulatory Capital Calculation under Basel III FRTB for an Equally Weighted Portfolio of NIFTY 50, Gold, USDINR, US Treasuries, and Bitcoin**
 
 ---
 
-## Overview
+## Executive Summary
 
-A complete, self-contained Python risk system for a five-asset equally 
-weighted portfolio (NIFTY 50, Gold, USDINR, 20+ Year Treasury, Bitcoin) 
-covering 10 years of daily data. The project implements every step of 
-quantitative risk validation—from stationarity tests and GARCH family 
-selection to Extreme Value Theory, multi-method backtesting (Kupiec, 
-Christoffersen, McNeil–Frey), Principal Component Analysis, dynamic 
-correlation analysis, and FRTB capital calculation. 
-The analysis employs advanced econometric techniques including:
+This report presents a comprehensive validation of a GARCH-based risk model for a five‑asset equally weighted portfolio spanning the period 5 August 2016 to 4 August 2026. The portfolio consists of:
 
-- **GARCH(1,1)‑t** and **EGARCH(1,1)‑t** models for volatility forecasting
-- **Rolling window Value‑at‑Risk (VaR)** and **Expected Shortfall (ES)** estimation
-- Rigorous **backtesting** using Kupiec and Christoffersen tests
-- **Stress testing** using historical COVID‑19 crash scenarios
-- **Risk decomposition** through marginal and component VaR analysis
+* **NIFTY 50** (Indian equity)
+* **Gold Futures** (Commodity / safe haven)
+* **USDINR Spot** (Currency)
+* **iShares 20+ Year Treasury Bond ETF (TLT)** (US government bonds)
+* **Bitcoin‑USD** (Cryptocurrency)
 
-**Key Findings**  
-- The GARCH(1,1)‑t model demonstrates superior fit (AIC: 3425.45) compared to EGARCH (AIC: 3448.70)  
-- Portfolio returns exhibit significant non‑normality (Skewness: –0.94, Excess Kurtosis: 9.47)  
-- The model passes all regulatory backtests (Kupiec p=0.804, Christoffersen p=1.000)  
-- **2 breaches** observed against expected 2.4 (breach rate: 0.84%)  
-- TATAMOTORS contributes 36.43% to portfolio VaR despite equal weighting  
-- COVID‑19 stress scenario would cause **₹40.66 Cr loss** on ₹100 Cr portfolio
+The analysis proceeds through every stage required by a quantitative risk manager or model validator: data preparation, stationarity tests, volatility modelling (GARCH family selection), Value‑at‑Risk (VaR) and Expected Shortfall (ES) estimation, Extreme Value Theory for catastrophic risk, rigorous backtesting (Kupiec, Christoffersen, McNeil‑Frey), factor decomposition via PCA, dynamic correlation analysis, and finally regulatory capital calculation under the Fundamental Review of the Trading Book (FRTB).
 
----
+### Key Findings
 
-## 1. Introduction
+* Portfolio daily returns are stationary (ADF $p = 0.0000$) and exhibit no linear autocorrelation (Ljung‑Box $p > 0.05$), justifying a constant‑mean model.
+* Strong volatility clustering is confirmed (ARCH‑LM $p = 0.0000$; squared‑return Ljung‑Box $p < 10^{-12}$), necessitating GARCH modelling.
+* After comparing GARCH(1,1)‑Normal, GARCH(1,1)‑t, EGARCH(1,1,1)‑t, and TGARCH(1,1,1)‑t, the **GARCH(1,1)‑t** model is selected (lowest BIC, all parameters significant). The asymmetry parameters in EGARCH and TGARCH are not significant, indicating no leverage effect in this diversified portfolio.
+* Degrees of freedom $\nu = 4.16$ confirm extremely heavy tails, far from normality.
+* Conditional VaR (95%) from GARCH‑t is 1.55%, VaR (99%) is 2.74%. EWMA (RiskMetrics) severely underestimates tail risk (99% VaR only 1.55%).
+* EVT (POT‑GPD) provides the catastrophic risk estimates: 99.9% VaR ($\theta$‑adj) = 5.70%, ES = 7.67%, highlighting the severe tail risk from crypto and equity components.
+* Rolling backtest over the last 250 days: 5 breaches vs 12.5 expected $\rightarrow$ conservative but independent breaches (Christoffersen $p = 0.65$). ES backtest passes ($p = 0.10$).
+* Regulatory capital under FRTB (1‑day) = **5.30% of portfolio value**, driven by the average ES over the last year and a backtesting multiplier of 1.6 (Yellow zone).
+* PCA reveals two dominant factors: "Risk‑Off" (Gold + Treasury, 24.4%) and "Risk‑On" (NIFTY + Crypto, 23.6%), with USDINR providing independent diversification.
+* Rolling correlations show that NIFTY–Crypto correlation spikes to 0.6–0.7 during crises, while Gold's safe‑haven role has eroded in recent years.
 
-Financial institutions are required by Basel III and other regulatory frameworks to maintain adequate capital reserves against market risk. This project implements a robust risk measurement framework that:
-
-1. Quantifies daily portfolio risk using Value‑at‑Risk (VaR) and Expected Shortfall (ES)  
-2. Models volatility clustering and fat tails characteristic of financial returns  
-3. Validates model accuracy through comprehensive backtesting procedures  
-4. Decomposes risk to identify concentration and diversification benefits  
-5. Stress‑tests the portfolio under extreme market scenarios
-
-### 1.1 Regulatory Context  
-This analysis aligns with:
-- **Basel III** market risk framework (FRTB – Fundamental Review of the Trading Book)  
-- **CRR/CRD IV** requirements for internal models  
-- **SEBI** guidelines for Indian market participants
+The model is deemed **valid** for regulatory and internal risk management, albeit conservative—a preferable outcome for capital adequacy.
 
 ---
 
-## 2. Data and Preprocessing
+## 1. Data Preparation & Portfolio Construction
 
-### 2.1 Data Sources and Ticker Selection  
-The portfolio comprises five major NSE‑listed stocks representing diverse sectors:
+### 1.1 Data Sources and Cleaning
+Daily adjusted close prices for five assets are downloaded via `yfinance` for the period 2016‑08‑05 to 2026‑08‑05 (10 years). Tickers: `^NSEI`, `GC=F`, `INR=X`, `TLT`, `BTC-USD`. After renaming columns for readability, rows with any missing values are dropped, resulting in a clean DataFrame of 2,380 business days.
 
-| Ticker | Company | Sector | Weight |
-|--------|---------|--------|--------|
-| RELIANCE.NS | Reliance Industries | Energy/Conglomerate | 20% |
-| INFY.NS | Infosys | IT Services | 20% |
-| HDFCBANK.NS | HDFC Bank | Banking | 20% |
-| ITC.NS | ITC Limited | FMCG | 20% |
-| TMPV.NS | Tata Motors | Automotive | 20% |
+![Raw price time series (2016-2026)](Raw%20price%20time%20series%20%282016%E2%80%912026%29.png)  
+*Figure 1: Raw price time series (2016‑2026).*
 
-**Data Parameters**  
-- **Period:** August 1, 2021 – July 31, 2026 (5 years)  
-- **Source:** Yahoo Finance (yfinance API)  
-- **Frequency:** Daily closing prices (adjusted for corporate actions)
+### 1.2 Log Returns
+Daily log returns are computed as:
 
-### 2.2 Data Quality Assessment  
-- Missing values per stock: RELIANCE.NS 0, INFY.NS 0, HDFCBANK.NS 0, ITC.NS 0, TMPV.NS 0
-- Complete data availability – no missing observations  
-- Forward‑fill and drop‑na applied as defensive preprocessing  
-- Total observations: 1,237 trading days (approximately 5 years)
+$$r_t = 100 \times \ln(P_t / P_{t-1})$$
 
-### 2.3 Return Calculation  
-Daily log‑returns are computed as:  
-$$ r_t = \ln\left(\frac{P_t}{P_{t-1}}\right) \times 100 $$
+The resulting DataFrame contains 2,379 observations.
 
-**Rationale**  
-- Log‑returns are time‑additive, facilitating portfolio aggregation  
-- Approximately normally distributed under classical assumptions  
-- Scale‑invariant and symmetric for positive/negative moves
+Descriptive statistics of asset returns:
 
-**Portfolio Return**  
-$$ r_{p,t} = \sum_{i=1}^{5} w_i \cdot r_{i,t} $$  
-where $w_i = 0.2$ for all stocks (equal‑weighting scheme).
+| Asset | Mean (%) | Std (%) | Min (%) | Max (%) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Crypto** | 0.198 | 4.311 | –46.47 | 22.51 |
+| **Gold** | 0.047 | 1.084 | –12.07 | 5.91 |
+| **USDINR** | 0.015 | 0.390 | –2.31 | 2.64 |
+| **Treasury** | –0.010 | 0.958 | –9.01 | 7.25 |
+| **NIFTY** | 0.044 | 1.047 | –13.90 | 8.40 |
 
----
+Crypto dominates in both mean and volatility; Treasury shows a negative mean due to rising yields; USDINR is extremely low volatility.
 
-## 3. Exploratory Data Analysis
+### 1.3 Equally Weighted Portfolio Return
+The portfolio return is the simple arithmetic average of the five asset returns (20% each, rebalanced daily). Series length: 2,379.
 
-### 3.1 Descriptive Statistics
+**Portfolio Return Statistics**
 
-| Statistic | Value (%) | Interpretation |
-|-----------|-----------|----------------|
-| Count | 1,237 | Full sample size |
-| Mean | 0.0152 | Slightly positive drift |
-| Std Dev | 1.0493 | Typical daily volatility |
-| Min | –10.4182 | Largest single‑day loss (Oct 14, 2025) |
-| 25th %ile | –0.5090 | Moderate loss threshold |
-| Median | 0.0413 | Slightly positive median |
-| 75th %ile | 0.6179 | Moderate gain threshold |
-| Max | 4.9709 | Largest single‑day gain |
+| Statistic | Value |
+| :--- | :--- |
+| **Mean** | 0.059% |
+| **Std Dev** | 0.976% |
+| **Skewness** | –0.863 |
+| **Kurtosis** | 10.926 |
+| **Min** | –11.40% |
+| **Max** | 4.43% |
 
-### 3.2 Distribution vs. Normal
+The portfolio exhibits strong negative skew and massive excess kurtosis—clear evidence of fat tails. A normal distribution would be a poor approximation.
 
-**Jarque‑Bera Test:** p‑value < 0.0001  
-**Interpretation**  
-- Rejection of normality at all conventional significance levels  
-- Left‑skewed distribution (–0.94) indicating downside asymmetry  
-- Excess kurtosis (9.47) confirming fat tails
+![Portfolio daily returns time series](Portfolio%20daily%20returns%20time%20series.png)  
+![Histogram with normal overlay](histogram%20with%20normal%20overlay.png)  
+*Figure 2: Portfolio daily returns time series and histogram with normal overlay.*
 
-### 3.3 Q‑Q Plot Analysis
-
-- Tail deviations: extreme negative values → fat tails  
-- Slope > 1 for extremes → higher tail risk than normal  
-- Asymmetry (left‑heavy) → downside risk exceeds upside  
-- Justifies using a **Student’s t distribution** with estimated degrees of freedom $\nu$
+Cumulative growth of ₹1 invested at the start reached ₹3.64 by the end of 2026 ($3.64\times$), demonstrating attractive long‑term returns, punctuated by sharp drawdowns.
 
 ---
 
-## 4. Time Series Diagnostics
+## 2. Stationarity & White Noise Diagnostics
 
-### 4.1 Stationarity (KPSS Test)
-- KPSS test p‑value: 0.0237
-- **Null:** series is stationary  
-- p‑value = 0.0237 < 0.05 → reject stationarity at 5% level  
-- Implication: returns exhibit structural changes or long‑memory effects
+### 2.1 Augmented Dickey‑Fuller (ADF) Test
+* **Raw Prices** – All five price series fail to reject the unit root null ($p$-values between 0.59 and 0.99), confirming non‑stationarity.
+* **Portfolio Returns** – ADF statistic = –26.61, $p$-value = 0.0000, strongly stationary. This justifies modelling returns directly.
 
-### 4.2 Serial Correlation (Ljung‑Box)
+### 2.2 Ljung‑Box Tests
+* **On returns** (lags 5, 10, 20): $p$-values 0.22, 0.08, 0.14 $\rightarrow$ no significant autocorrelation $\rightarrow$ returns are white noise. A constant mean model is appropriate.
+* **On squared returns** (lags 5, 10, 20): $p$-values $< 10^{-12}$ $\rightarrow$ strong ARCH effects $\rightarrow$ volatility clustering is present.
 
-| Lag | Returns p‑value | Squared Returns p‑value |
-|-----|----------------|-------------------------|
-| 1   | 0.6948         | 0.1224                  |
-| 2   | 0.7031         | 0.2404                  |
-| 3   | 0.6860         | 0.3726                  |
-| 4   | 0.6763         | 0.4606                  |
-| 5   | 0.5694         | 0.6048                  |
-
-- **Returns:** all p‑values > 0.05 → no significant autocorrelation  
-- **Squared returns:** all p‑values > 0.05 → weak evidence of ARCH effects  
-- Caveat: the squared returns LB test suggests volatility may be less persistent than typical for equity returns, possibly due to post‑COVID stabilisation or portfolio diversification.
-
-### 4.3 Volatility Clustering (ARCH‑LM)
-- ARCH LM p‑value: 0.9887
-- Fails to detect significant volatility clustering  
-- Possible reasons: diversified portfolio smoothing, post‑pandemic behaviour, moderate sample size  
-- **Still justified** to model volatility due to financial theory, presence of extreme events, and regulatory requirements.
+### 2.3 ARCH‑LM Test
+Engle's test statistic = 69.53, $p$-value = 0.0000. Confirms the need for a GARCH model.
 
 ---
 
-## 5. Volatility Modeling: GARCH vs EGARCH
+## 3. Volatility Modelling (GARCH Family)
 
-### 5.1 Model Specifications
+### 3.1 Model Candidates
+Four specifications are fitted on the full portfolio return series:
 
-**GARCH(1,1)‑t**  
-$$ \sigma_t^2 = \omega + \alpha \epsilon_{t-1}^2 + \beta \sigma_{t-1}^2 $$  
-with Student’s t innovations: $\epsilon_t \sim t_\nu(0, \sigma_t^2)$
+1. **GARCH(1,1) – Normal** (baseline)
+2. **GARCH(1,1) – Student's t** (fat tails)
+3. **EGARCH(1,1,1) – t** (asymmetric, captures leverage)
+4. **TGARCH(1,1,1) – t** (GJR‑GARCH, alternative asymmetry)
 
-**EGARCH(1,1)‑t**  
-$$ \ln(\sigma_t^2) = \omega + \alpha \left(\frac{|\epsilon_{t-1}|}{\sigma_{t-1}} - \sqrt{\frac{2}{\pi}}\right) + \beta \ln(\sigma_{t-1}^2) + \gamma \frac{\epsilon_{t-1}}{\sigma_{t-1}} $$  
-The $\gamma$ parameter captures the leverage effect.
+All models assume a constant mean $\mu$, justified by the white‑noise property.
 
-### 5.2 Model Estimation Results
+### 3.2 Estimation Results
 
-**Table: GARCH(1,1)‑t Model Results**
+| Model | $\mu$ | $\omega$ | $\alpha$ | $\beta$ | $\gamma$ | $\nu$ | $\alpha+\beta$ |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **GARCH(1,1)-Normal** | 0.0591<br>($p=0.0008$) | 0.0568<br>($p=0.076$) | 0.1057<br>($p=0.039$) | 0.8394<br>($p\approx 0$) | — | — | **0.945** |
+| **GARCH(1,1)-t** | 0.0524<br>($p=0.0006$) | 0.0269<br>($p=0.005$) | 0.0723<br>($p<0.0001$) | 0.9049<br>($p\approx 0$) | — | 4.161<br>($p\approx 0$) | **0.977** |
+| **EGARCH(1,1,1)-t** | 0.0521 | 0.0108<br>($p=0.080$) | 0.1638<br>($p<0.0001$) | 0.9707<br>($p\approx 0$) | 0.0077<br>($p=0.610$) | 4.132 | — |
+| **TGARCH(1,1,1)-t** | 0.0529 | 0.0256<br>($p=0.014$) | 0.0752<br>($p<0.0001$) | 0.9083<br>($p\approx 0$) | -0.0101<br>($p=0.612$) | 4.154 | — |
 
-| Parameter | Coefficient | Std Error | t‑statistic | P‑value | 95% CI |
-|-----------|-------------|-----------|-------------|---------|---------|
-| **Mean**  |             |           |             |         |         |
-| μ         | 0.0449      | 0.0263    | 1.704       | 0.0885  | [-0.0068, 0.0965] |
-| **Variance** |         |           |             |         |         |
-| ω         | 0.1270      | 0.0631    | 2.011       | 0.0444  | [0.0032, 0.251] |
-| α         | 0.1119      | 0.0437    | 2.558       | 0.0105  | [0.0262, 0.198] |
-| β         | 0.7689      | 0.0936    | 8.219       | <0.0001 | [0.586, 0.952] |
-| **Distribution** |      |           |             |         |         |
-| ν         | 5.8223      | 1.1330    | 5.140       | <0.0001 | [3.602, 8.042] |
+**Notes:**
+* Values in parentheses represent $p$-values.
+* $\nu$ represents the degrees of freedom parameter for Student-t innovations.
+* $\gamma$ captures asymmetric volatility effects in EGARCH/TGARCH models.
 
-**Information Criteria**  
-- AIC: 3425.45  
-- BIC: 3451.05  
-- Log‑Likelihood: –1707.72
+### 3.3 Model Selection
 
-**Table: EGARCH(1,1)‑t Model Results**
+| Model | AIC | BIC |
+| :--- | :--- | :--- |
+| **GARCH‑n** | 6366.49 | 6389.59 |
+| **GARCH‑t** | 6062.58 | **6091.45** |
+| **EGARCH‑t** | 6057.52 | 6092.16 |
+| **TGARCH‑t** | 6064.29 | 6098.94 |
 
-| Parameter | Coefficient | Std Error | t‑statistic | P‑value | 95% CI |
-|-----------|-------------|-----------|-------------|---------|---------|
-| **Mean**  |             |           |             |         |         |
-| μ         | 0.0385      | 0.0257    | 1.501       | 0.133   | [-0.0118, 0.0888] |
-| **Variance** |         |           |             |         |         |
-| ω         | 0.0082      | 0.0225    | 0.365       | 0.715   | [-0.0358, 0.0523] |
-| γ         | –0.1434     | 0.0424    | –3.384      | 0.0007  | [-0.226, -0.0603] |
-| β         | 0.7084      | 0.1160    | 6.113       | <0.0001 | [0.481, 0.936] |
-| **Distribution** |      |           |             |         |         |
-| ν         | 4.9281      | 0.7560    | 6.517       | <0.0001 | [3.446, 6.410] |
+EGARCH‑t has the lowest AIC, but its extra asymmetry parameter is insignificant; GARCH‑t has the lowest BIC and all parameters are significant. The principle of parsimony, combined with the lack of leverage effect in a diversified portfolio, selects **GARCH(1,1)‑t** as the final model.
 
-**Information Criteria**  
-- AIC: 3448.70  
-- BIC: 3474.30  
-- Log‑Likelihood: –1719.35
+### 3.4 Residual Diagnostics
 
-### 5.3 Model Selection
+Standardised residuals $z_t = \varepsilon_t / \sigma_t$ from the GARCH‑t model are examined.
 
-- **GARCH(1,1)‑t is preferred** – lower AIC and BIC, more parsimonious  
-- **Volatility persistence** – α+β = 0.8808 < 1 (stationary); half‑life ≈ 5.5 days  
-- **Degrees of freedom** – GARCH ν=5.82, EGARCH ν=4.93 (both capture fat tails)  
-- **Leverage effect** – EGARCH γ = –0.1434 (significant) → negative shocks increase volatility more  
-- **Mean parameter** – GARCH μ=0.0449% (marginally significant at 10%), annualised ≈ 11.3%
+* Mean = 0.0041, Std = 0.9906 $\rightarrow$ close to $(0,1)$.
+* Ljung‑Box on $z_t$: all $p$-values $> 0.18$ $\rightarrow$ no autocorrelation remaining.
+* Ljung‑Box on $z_t^2$: all $p$-values $> 0.23$ $\rightarrow$ no remaining ARCH effects.
+
+![ACF of standardised residuals and squared residuals](ACF%20of%20standardised%20residuals%20and%20squared%20residuals.png)  
+*Figure 3: ACF of standardised residuals and squared residuals – no significant spikes.*
+
+**QQ‑plot against $t(4.16)$** – The central quantiles align well with the theoretical distribution; the tails show slight conservatism (theoretical $t$ expects slightly more extreme values than observed). This indicates the model's fat‑tailed assumption is adequate, and any remaining conservatism is acceptable for risk management.
 
 ---
 
-## 6. Model Diagnostics
+## 4. Value‑at‑Risk & Expected Shortfall
 
-### 6.1 Ljung‑Box on Standardised Residuals
+### 4.1 Methodologies
 
-| Test | GARCH‑t | EGARCH‑t |
-|------|---------|----------|
-| Residuals (Lag 1) | 0.1364 | 0.3944 |
-| Residuals (Lag 2) | 0.2367 | 0.3467 |
-| Residuals (Lag 3) | 0.3805 | 0.3935 |
-| Residuals (Lag 4) | 0.4762 | 0.3826 |
-| Residuals (Lag 5) | 0.5130 | 0.3741 |
+* **Historical VaR/ES** – Non‑parametric, based on empirical quantiles.
+* **Parametric GARCH‑t** – 1‑step conditional forecast using the fitted model.
+* **EWMA (RiskMetrics)** – Exponential weighted volatility ($\lambda=0.94$), normal assumption, zero mean.
 
-All p‑values > 0.05 → no serial correlation in residuals; GARCH model successfully captures linear dependencies.
+### 4.2 Results
 
-### 6.2 Ljung‑Box on Squared Standardised Residuals
+| Method | 95% VaR (%) | 99% VaR (%) | 95% ES (%) | 99% ES (%) |
+| :--- | :--- | :--- | :--- | :--- |
+| **Historical** | 1.4148 | 2.7139 | 2.2616 | 3.8503 |
+| **GARCH‑t(1,1)** | 1.5509 | 2.7370 | 2.3337 | 3.7934 |
+| **EWMA** | 1.0982 | 1.5532 | 1.3771 | 1.7794 |
 
-| Test | GARCH‑t | EGARCH‑t |
-|------|---------|----------|
-| Squared (Lag 1) | 0.8363 | 0.1402 |
-| Squared (Lag 2) | 0.8613 | 0.1372 |
-| Squared (Lag 3) | 0.9226 | 0.1063 |
-| Squared (Lag 4) | 0.9695 | 0.1475 |
-| Squared (Lag 5) | 0.9690 | 0.2366 |
+The GARCH‑t VaR is slightly higher than historical, reflecting the current elevated volatility. EWMA severely underestimates risk, especially at the 99% level, because it assumes normality.
 
-GARCH‑t: all p‑values > 0.80 → excellent fit; EGARCH‑t: all p‑values > 0.10 → adequate. GARCH‑t better captures volatility dynamics.
-
-### 6.3 ARCH‑LM on Standardised Residuals
-- ARCH LM p‑value: 0.9887
-- Cannot reject H₀ of no remaining ARCH effects → standardised residuals are white noise; model is well‑specified.
-
-### 6.4 QQ Plot (Standardised Residuals vs. Student’s t)
-
-Points closely follow the 45° reference line, with slight deviations in extreme tails (expected with finite sample). The Student’s t distribution is an appropriate choice.
+![VaR comparison bar chart](VaR%20comparison%20bar%20chart.png)  
+*Figure 4: VaR comparison bar chart.*
 
 ---
 
-## 7. Rolling Window Forecasting
+## 5. Extreme Value Theory (EVT) – Peaks Over Threshold
 
-- **Window size:** 1,000 observations (~4 years)  
-- **Forecast horizon:** 1‑day ahead  
-- **Total forecasts:** 237 days (August 2025 – July 2026)  
-- **Model refit:** daily (each day, model is re‑estimated)
+### 5.1 Loss Series & Threshold
+Define loss $L_t = -r_t$. The threshold $u$ is chosen as the 95th percentile of losses ($= 1.4148\%$), consistent with the historical 95% VaR. This yields 119 exceedances.
 
-**Advantages:** adaptive, robust, avoids look‑ahead bias, mirrors regulatory backtesting.
+![Mean Excess Plot](Mean%20Excess%20Plot.png)  
+*Figure 5: Mean Excess Plot – linearity beyond ~1.4% supports the threshold.*
 
-### 7.1 Forecasted Risk Metrics (237 days)
+### 5.2 GPD Fit
+Exceedances above the threshold are modelled by the Generalised Pareto Distribution:
 
-| Metric | Mean | Std Dev | Min | 25% | 50% | 75% | Max |
-|--------|------|---------|-----|-----|-----|-----|-----|
-| σ (volatility) | 0.9606 | 0.1649 | 0.7450 | 0.8448 | 0.9160 | 1.0247 | 1.7122 |
-| VaR 99% | –2.9768 | 0.5276 | –5.2924 | –3.1912 | –2.8547 | –2.6378 | –2.1860 |
-| ES 97.5% | –3.0870 | 0.5479 | –5.4777 | –3.3097 | –2.9702 | –2.7318 | –2.2563 |
+$$G(x) = 1 - \left(1 + \xi \frac{x}{\psi}\right)^{-1/\xi}$$
 
-### 7.2 Volatility Dynamics
+Estimated parameters:
+* Shape $\xi = 0.2077$ (heavy‑tailed, Fréchet domain)
+* Scale $\psi = 0.6662$
 
-- Mean volatility: 0.96% daily (~15.2% annualised)  
-- Volatility range: 0.74% – 1.71%  
-- Peaks observed in October 2025, March 2026, and July 2026 – consistent with macroeconomic uncertainty, earnings seasons, and global spillovers.
+A positive $\xi$ confirms the loss distribution has a fat tail.
 
----
+![QQ-plot of exceedances vs GPD](QQ%E2%80%91plot%20of%20exceedances%20vs%20GPD.png)  
+*Figure 6: QQ‑plot of exceedances vs GPD – good fit except one extreme outlier.*
 
-## 8. VaR and Expected Shortfall
+### 5.3 Extremal Index & Adjustment
+The extremal index $\theta$ is estimated using the runs estimator (run length = 3). $\theta = 0.8403$ indicates mild clustering of extremes. The effective sample size becomes $T_{\text{adj}} = T \times \theta$, increasing the VaR/ES estimates.
 
-### 8.1 Methodology
+### 5.4 Unconditional POT VaR & ES
 
-**VaR (99% confidence)**  
-$$ \text{VaR}_{0.01} = \mu_t + \sigma_t \cdot t_{\nu}^{-1}(0.01) $$  
-where $t_{\nu}^{-1}(0.01)$ is the 1st percentile of Student’s t with $\nu$ degrees of freedom.
+| Confidence | VaR (unadj) | VaR ($\theta$‑adj) | ES ($\theta$‑adj) |
+| :--- | :--- | :--- | :--- |
+| **99%** | 2.6883% | 2.8532% | 4.0711% |
+| **99.9%** | 5.4363% | 5.7023% | 7.6673% |
 
-**ES (97.5% confidence)**  
-$$ \text{ES}_{0.025} = \mu_t - \sigma_t \cdot \frac{f_\nu(t_{\nu}^{-1}(0.025))}{0.025} \cdot \frac{\nu + (t_{\nu}^{-1}(0.025))^2}{\nu - 1} $$  
-ES measures the average loss conditional on VaR being breached; more risk‑averse than VaR.
-
-### 8.2 VaR vs. ES (Selected Period)
-
-| Date | 99% VaR | 97.5% ES | Difference | VaR/ES Ratio |
-|------|---------|----------|------------|--------------|
-| 2025‑09 | –2.6% | –2.6% | 0.0% | 1.00 |
-| 2025‑10 | –2.7% | –2.7% | 0.0% | 1.00 |
-| 2025‑11 | –3.6% | –3.6% | 0.0% | 1.00 |
-| 2025‑12 | –2.8% | –2.8% | 0.0% | 1.00 |
-| 2026‑01 | –2.9% | –2.9% | 0.0% | 1.00 |
-| 2026‑02 | –3.2% | –3.2% | 0.0% | 1.00 |
-| 2026‑03 | –3.5% | –3.5% | 0.0% | 1.00 |
-| 2026‑04 | –4.0% | –4.0% | 0.0% | 1.00 |
-
-VaR and ES are nearly identical, suggesting the Student’s t distribution has approximately symmetric tail behaviour. The near‑equality indicates the model is calibrating conservatively to recent data.
+The $\theta$‑adjusted 99.9% ES of 7.67% means that in the worst 1‑in‑1,000 day, the average loss could exceed 7.7% of the portfolio. This is the most conservative tail‑risk measure and is essential for stress testing.
 
 ---
 
-## 9. Backtesting Framework
+## 6. Backtesting (Out‑of‑Sample, 250 Days)
 
-### 9.1 Basel III Traffic Light System
+### 6.1 Setup
+The last 250 trading days are held out. A rolling expanding‑window GARCH(1,1)‑t model re‑estimates and forecasts 1‑day 95% VaR for each day in the test set.
 
-| Zone | Breaches (250 days) | Interpretation |
-|------|-------------------|----------------|
-| Green | ≤ 4 | Model acceptable |
-| Yellow | 5‑9 | Model questionable |
-| Red | ≥ 10 | Model rejected |
+### 6.2 VaR Backtesting
 
-**Our result:** 2 breaches in 237 days → **GREEN zone**
+* Expected breaches (5%): 12.5
+* Actual breaches: 5
+* Kupiec POF test: $\text{LR} = 12.14$, $p$-value = 0.0137 (reject correct coverage $\rightarrow$ model is conservative)
+* Christoffersen CC test: $\text{LR} = 0.205$, $p$-value = 0.6508 (fail to reject independence of breaches)
 
-### 9.2 Kupiec Proportion of Failures (PF) Test
+The VaR model over‑estimates risk (too few breaches), but breaches are independent. This is acceptable from a prudential standpoint.
 
-- H₀: breach rate p = 0.01 (model accurate)  
-- H₁: breach rate p ≠ 0.01 (model biased)
+### 6.3 ES Backtesting (McNeil‑Frey)
 
-Test statistic:  
-$$ \text{LR}_{\text{Kupiec}} = -2 \ln\left(\frac{(1-p)^{n-x}p^x}{(1-x/n)^{n-x}(x/n)^x}\right) $$
+The standardized excess $(L_t - \text{ES}_t) / \sigma_t$ on breach days has mean –0.5478, std 0.5161. A one‑sample t‑test yields $p$-value = 0.1010. We fail to reject the null that the mean excess is zero $\rightarrow$ **the ES forecasts are unbiased** (though slightly conservative).
 
-**Our results:** n=237, x=2 → LR = 0.0616, p‑value = 0.8040  
-→ Cannot reject H₀; breach frequency is consistent with expected 1%.
-
-### 9.3 Christoffersen Conditional Coverage Test
-
-- H₀: breaches are independent (no clustering)  
-- H₁: breaches are clustered
-
-**Our results:** LR = 0.0000, p‑value = 1.0000 → no evidence of breach clustering; GARCH‑t successfully captures volatility dynamics.
-
-### 9.4 Combined Assessment
-
-| Test | Statistic | p‑value | Result |
-|------|-----------|---------|--------|
-| Kupiec (Frequency) | 0.0616 | 0.8040 | ✅ PASS |
-| Christoffersen (Independence) | 0.0000 | 1.0000 | ✅ PASS |
-| Traffic Light | 2 breaches (0.84%) | – | 🟢 GREEN |
-| **Verdict** | – | – | **PASS – Model is accurate and independent** |
+**Final Verdict: MODEL VALID** (conservative, but robust).
 
 ---
 
-## 10. Expected Shortfall Assessment
+## 7. Regulatory Capital Calculation (FRTB IMA)
 
-### 10.1 ES Performance
+### 7.1 Expected Shortfall at 97.5%
+* Latest conditional ES (GARCH‑t): 2.9091%
+* 12‑month average ES (from rolling forecasts): 3.3095%
+* POT‑based unconditional ES: 3.0549%
 
-**Breach Dates**  
-1. **2025‑10‑14:** Actual loss = –10.42%, Predicted ES = –2.43%  
-2. **2026‑03‑19:** Actual loss = –3.55%, Predicted ES = –2.90%
+The binding constraint is the **12‑month average ES** (3.31%), to avoid procyclicality.
 
-| Metric | Value | Interpretation |
-|--------|-------|----------------|
-| Average Actual Loss (breaches) | –6.98% | Extremely severe losses |
-| Average Predicted ES | –2.75% | Model expected loss |
-| ES Shortfall | –4.23% | Severe underestimation |
-| **Status** | ⚠️ **WARNING** | ES underestimates tail severity |
+### 7.2 Backtesting Multiplier
+Five exceptions place the model in the **Yellow zone** (5‑9 exceptions). The multiplier is:
 
-**Interpretation**  
-- The portfolio experienced two extreme tail events where actual losses were 2–4 times larger than ES predictions.  
-- The October 2025 event (–10.42%) was unprecedented in the sample, suggesting an exogenous shock not captured by historical volatility.  
-- Potential causes: structural break, idiosyncratic portfolio risk (single‑stock exposure), liquidity events, or missing fat‑tail modelling beyond Student’s t.
+$$m_c = 1.5 + 0.1 \times (5 - 4) = 1.60$$
 
-**Recommendations**  
-- Consider **Extreme Value Theory (EVT)** for tail estimation  
-- Implement **stressed VaR (SVaR)** as per Basel III FRTB  
-- Explore **regime‑switching** or **copula models** for dependency structure
+*(Note: The model's conservatism may allow a lower multiplier upon regulatory review, but we use the formula for safety.)*
+
+### 7.3 Capital Charge
+
+$$\mathrm{Capital}_{1\text{-day}} = \max(\mathrm{ES}_{\text{latest}}, \mathrm{ES}_{\text{avg}}) \times m_c = 3.3095\% \times 1.60 = 5.2953\%$$
+
+**For a ₹10 crore portfolio, daily regulatory capital = ₹52.95 lakhs.**  
+A 10‑day charge (scaled by $\sqrt{10}$) would be ~16.74% of portfolio value.
 
 ---
 
-## 11. VaR Decomposition
+## 8. Factor Analysis (PCA)
 
-### 11.1 Methodology
+### 8.1 Correlation Matrix
 
-**Marginal VaR (MVaR):**  
-$$ \text{MVaR}_i = \frac{\partial \text{VaR}_p}{\partial w_i} = \text{VaR}_p \cdot \frac{(\Sigma w)_i}{w_p^T \Sigma w_p} $$  
+| Asset | Crypto | Gold | USDINR | Treasury | NIFTY |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Crypto** | 1.00 | 0.10 | 0.03 | –0.02 | 0.09 |
+| **Gold** | 0.10 | 1.00 | –0.01 | 0.20 | 0.06 |
+| **USDINR** | 0.03 | –0.01 | 1.00 | –0.01 | –0.15 |
+| **Treasury** | –0.02 | 0.20 | –0.01 | 1.00 | –0.08 |
+| **NIFTY** | 0.09 | 0.06 | –0.15 | –0.08 | 1.00 |
 
-**Component VaR (CVaR):**  
-$$ \text{CVaR}_i = w_i \cdot \text{MVaR}_i $$  
+![Correlation Matrix](Correlation%20Matrix.png)  
+Overall low correlations confirm effective diversification.
 
-**Percentage contribution:**  
-$$ \frac{\text{CVaR}_i}{\sum \text{CVaR}_i} \times 100\% $$
+### 8.2 Principal Components
 
-### 11.2 Decomposition Results (99% VaR)
+| PC | Eigenvalue Ratio | Cumulative | Interpretation (loadings) |
+| :--- | :--- | :--- | :--- |
+| **1** | 24.4% | 24.4% | **Risk‑Off**: Gold (+0.70), Treasury (+0.50) |
+| **2** | 23.6% | 48.0% | **Risk‑On**: NIFTY (+0.67), Crypto (+0.21) |
+| **3** | 20.8% | 68.8% | **Crypto/FX**: Crypto (+0.73), USDINR (+0.61) |
+| **4** | 16.3% | 85.1% | Residual |
+| **5** | 14.9% | 100% | Noise |
 
-| Stock | Weight | Marginal VaR | Component VaR | Contribution % |
-|-------|--------|--------------|---------------|----------------|
-| TATAMOTORS | 20% | –5.5995 | –1.1199 | **36.43%** |
-| INFY | 20% | –2.8617 | –0.5723 | 18.62% |
-| ITC | 20% | –2.7137 | –0.5427 | 17.66% |
-| RELIANCE | 20% | –2.3483 | –0.4697 | 15.28% |
-| HDFCBANK | 20% | –1.8461 | –0.3692 | 12.01% |
-| **Portfolio** | 100% | – | **–3.0739** | **100.00%** |
+The first three components explain 68.7% of total variance, indicating three distinct risk factors.
 
-**Key Observations**  
-- TATAMOTORS dominates risk (36.4% contribution with only 20% weight) – highest marginal VaR (–5.60)  
-- HDFCBANK is the lowest risk (12.0% contribution) – provides diversification  
-- Top 2 stocks (TATAMOTORS + INFY) = 55.1%; top 3 = 72.7%; bottom 2 = 27.3%
-
-**Portfolio Management Implications**  
-- Consider **underweighting** TATAMOTORS and **overweighting** HDFCBANK  
-- Implement **position limits** (e.g., 15% max weight)  
-- Hedging opportunities: long TATAMOTORS / short HDFCBANK pair trades, options for downside protection
+![biplot](biplot.png)  
+*Figure 8: The biplot visually separates "Risk‑On" assets (NIFTY, Crypto) from "Safe‑Haven" assets (Gold, Treasury), with USDINR acting as an orthogonal diversifier.*
 
 ---
 
-## 12. Stress Testing: COVID‑19 Scenario
+## 9. Dynamic Correlation Analysis
 
-### 12.1 Scenario Definition
+Using a 238‑day rolling window (approximately one trading year), pairwise correlations are computed for all asset pairs.
 
-Using actual cumulative returns during the COVID‑19 crash (Feb–Mar 2020) as stress shocks.
+![Rolling correlations – all 10 pairs](Rolling%20correlations%20%E2%80%93%20all%2010%20pairs.png)  
+*Figure 9: Rolling correlations – all 10 pairs.*
 
-| Stock | Cumulative Return (%) | Severity Rank |
-|-------|----------------------|---------------|
-| TATAMOTORS | –61.08% | 1 (Worst) |
-| ITC | –42.09% | 2 |
-| RELIANCE | –38.00% | 3 |
-| INFY | –35.54% | 4 |
-| HDFCBANK | –26.58% | 5 |
+**Key Observations:**
+* **NIFTY–Crypto** correlation fluctuates between –0.1 and +0.7, spiking during the COVID crash (2020) and the 2022 crypto winter. This confirms that diversification evaporates during systemic crises.
+* **Gold–Treasury** correlation remains moderately positive, while **Gold–NIFTY** has turned positive recently (2024‑2026), suggesting Gold's traditional safe‑haven role may be weakening.
+* **USDINR** shows low correlation with all assets, reinforcing its diversification benefit.
 
-**Portfolio Shock**  
-$$ \text{Portfolio Shock} = 0.2 \times \sum \text{Stock Shocks} = –40.66\% $$
-
-### 12.2 Impact Assessment
-
-| Metric | Value | Interpretation |
-|--------|-------|----------------|
-| Current Portfolio Value | ₹100 Cr | Base case |
-| Stress Loss | –₹40.66 Cr | 40.66% drawdown |
-| Post‑Stress Value | ₹59.34 Cr | Severe but survivable |
-| Worst Single Stock | –61.08% (TATAMOTORS) | Diversification reduces impact |
-
-**Risk Management Implications**  
-- 40.66% loss would be catastrophic but not fatal – requires minimum 50% capital buffer  
-- TATAMOTORS alone contributes 61% of portfolio loss (concentration risk) → critical need for position limits  
-- Portfolio retains ₹59.34 Cr (59.34% of value) – recovery time: ~24 months at 2% monthly return, ~12 months at 4%  
-- Under FRTB, Stressed VaR (SVaR) would be substantially higher → additional capital requirements
-
-**Recommendations**  
-- Reduce TATAMOTORS weight to ≤ 10%  
-- Increase HDFCBANK and RELIANCE weights  
-- Implement put options on NIFTY (index‑level hedge)  
-- Establish stop‑loss limits at –20% portfolio level  
-- Maintain liquidity buffer of 20% portfolio value
+This dynamic behaviour justifies the use of conditional risk models and highlights the danger of assuming static correlations in portfolio construction.
 
 ---
 
-## 13. Model Comparison: GARCH‑t vs Historical Simulation
+## 10. Conclusion & Recommendations
 
-### 13.1 Methodology Overview
+### 10.1 Summary
+The equally weighted multi‑asset portfolio delivers solid historical returns (~15% annualised) but carries significant tail risk, primarily driven by Crypto and equity components. The GARCH(1,1)‑t model provides a well‑specified, validated framework for measuring both conditional VaR/ES and, when supplemented with EVT, unconditional catastrophic risk. Backtesting confirms the model's adequacy: it is conservative but independent, and the ES backtest shows no significant bias.
 
-| Aspect | GARCH‑t | Historical Simulation (HS) |
-|--------|---------|---------------------------|
-| Assumptions | Parametric, fat tails | Non‑parametric |
-| Volatility | Conditional (adaptive) | Unconditional (static) |
-| Sample Usage | Weighted (recent > old) | Equal weight |
-| Tail Estimation | Student’s t distribution | Empirical percentiles |
-| Forward‑Looking | Yes (model‑based) | No (backward‑looking) |
-| Computational Cost | High | Low |
+### 10.2 Regulatory Capital
+Under FRTB IMA, the one‑day capital charge is **5.30%** of portfolio value. This figure can be directly used for internal capital allocation and regulatory reporting.
 
-### 13.2 Performance Comparison (237‑day out‑of‑sample)
+### 10.3 Recommendations
+* **Monitor the conservatism** – if the model continues to over‑estimate risk, recalibrate the t‑distribution degrees of freedom or explore skewed‑t alternatives.
+* **Integrate DCC‑GARCH** – To fully capture time‑varying correlations for active risk budgeting.
+* **Stress testing** – Use EVT‑based ES (99.9%) of 7.67% as a starting point for scenario design.
+* **Model governance** – The backtesting results support a model‑approval submission, but the Yellow zone multiplier (1.6) should be discussed with regulators to potentially revert to 1.5 given the conservatism.
 
-| Metric | GARCH‑t | HS VaR | Winner |
-|--------|---------|--------|--------|
-| Mean Absolute Error | 2.9219 | 2.5408 | **HS** |
-| Breach Count | 2 (0.84%) | 3 (1.27%) | **GARCH** |
-| Expected Breaches | 2.37 | 2.37 | – |
-| MAE Improvement | Baseline | +15.0% | **HS** |
-
-**Interpretation**  
-- HS has lower MAE (more accurate on average) but GARCH has better breach count (closer to expected 1%).  
-- HS is simpler and more conservative during trending periods; GARCH is forward‑looking and theoretically sound.  
-- **Recommendation:** Use GARCH‑t as the primary model (regulatory compliance, forward‑looking) and HS as a complementary validation.
-
----
-
-## 14. Risk Dashboard
-
-### 14.1 Portfolio Returns with 99% VaR
-
-![Returns and VaR](dashboard_returns_var.png)  
-*Actual returns (blue), 99% VaR (red), breaches marked (×).*
-
-### 14.2 Forecasted Volatility
-
-![Volatility](dashboard_volatility.png)  
-*Rolling conditional volatility (GARCH‑t).*
-
-### 14.3 Rolling 250‑Day Breach Count
-
-![Rolling Breaches](dashboard_rolling_breaches.png)  
-*Green/Yellow threshold (4), Yellow/Red threshold (9).*  
-The breach count remains in the GREEN zone throughout the forecast period.
-
----
-
-## 15. Standardised Residual Diagnostics
-
-### 15.1 QQ Plot vs. Student’s t
-
-![QQ Plot](dashboard_qqplot.png)  
-Points closely follow the 45° line; slight deviations in extreme tails (upper tail heavier, lower tail lighter) but overall excellent fit.
-
-### 15.2 Distribution Comparison
-
-![Residuals Histogram](2422e6aa-1429-4e87-a7ed-df883d54a352.png)  
-Histogram matches the theoretical t distribution (ν=5.82) well, with slight excess mass at the center.
-
----
-
-## 16. Limitations and Future Work
-
-### 16.1 Identified Limitations
-
-| Limitation | Description | Impact |
-|------------|-------------|--------|
-| Sample Period | 5 years only | May miss rare events |
-| ES Underestimation | Severe tail events (Oct 2025) | Capital inadequacy risk |
-| Equal Weights | Static allocation | No optimisation |
-| Single GARCH Variant | GARCH(1,1) only | Other specifications may improve |
-| No Regime Switching | Constant parameters | Structural breaks missed |
-
-### 16.2 Improvement Recommendations
-
-**Short‑term (1‑3 months)**  
-- Implement **Extreme Value Theory (EVT)** for tail modelling (Peaks Over Threshold, Generalized Pareto Distribution)  
-- Add **regime‑switching GARCH** (two regimes: low/high volatility)  
-- Include macro variables (VIX/NIFTY, INR/USD, global indices)
-
-**Long‑term (6‑12 months)**  
-- Implement **FRTB‑compliant model**: Expected Shortfall (not VaR), liquidity horizons, non‑modellable risk factors  
-- **Copula‑based dependence modeling** (Gaussian, t, Clayton) with tail dependence  
-- **Machine learning enhancements** (LSTM for volatility, random forest for regime classification)  
-- **Portfolio optimisation** (mean‑variance, risk parity, minimum VaR)
-
----
-
-## 17. Conclusion
-
-### 17.1 Key Results Summary
-
-| Category | Metric | Result | Status |
-|----------|--------|--------|--------|
-| Data | Observations | 1,237 days | ✅ Complete |
-| Returns | Mean (daily) | 0.015% | Normal |
-| Returns | Std Dev | 1.049% | Moderate |
-| Distribution | Skewness | –0.94 | Left‑skewed |
-| Distribution | Kurtosis | 9.47 | Fat tails |
-| Model | Best fit | GARCH(1,1)‑t | ✅ Selected |
-| Model | α + β | 0.8808 | Stationary |
-| Model | ν (df) | 5.82 | Fat tails |
-| VaR | 99% (avg) | –2.98% | Conservative |
-| ES | 97.5% (avg) | –3.09% | Marginal |
-| Backtest | Kupiec p‑value | 0.8040 | ✅ PASS |
-| Backtest | Christoffersen p‑value | 1.0000 | ✅ PASS |
-| Backtest | Traffic Light | GREEN | ✅ PASS |
-| Decomposition | Top contributor | TATAMOTORS (36%) | Concentration |
-| Stress Test | COVID loss | –40.66% | Severe |
-
-### 17.2 Final Verdict
-
-The **GARCH(1,1)‑t model** is an **acceptable** tool for portfolio risk management:
-
-- ✅ Statistical validation – model diagnostics passed, residuals are white noise, Student’s t fits well  
-- ✅ Regulatory compliance – backtesting PASSED, Green zone, Kupiec and Christoffersen tests PASSED  
-- ⚠️ Caveats – ES underestimates extreme events; TATAMOTORS concentration; COVID‑19 shock severe (–40.66%)
-
-**Recommendations**  
-- **Risk Managers:** Use GARCH‑t as primary model, HS as validation; monitor ES performance  
-- **Portfolio Managers:** Reduce TATAMOTORS weight (<15%), overweight HDFCBANK, implement stop‑loss at –20%  
-- **Senior Management:** Allocate minimum 50% capital buffer; establish liquidity contingency; implement early warning system for volatility spikes
-
----
+### 10.4 Future Work
+* Extend the model to incorporate intra‑horizon risk (e.g., value‑at‑risk over multiple days).
+* Implement a Dynamic Conditional Correlation (DCC) or Copula‑GARCH model to better capture correlation breakdowns.
+* Apply machine learning for regime‑switching volatility to reduce conservatism.
