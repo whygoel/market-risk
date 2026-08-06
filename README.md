@@ -1,11 +1,18 @@
-# State‑of‑the‑Art Portfolio Risk Management Framework
-## End‑to‑End Analysis Using GARCH‑t Models for Indian Equities
+# Multi-Asset Risk Validation Suite
+## End-to-end market risk modelling, backtesting, and regulatory capital calculation under Basel III FRTB for an equally weighted portfolio of NIFTY 50, Gold, USDINR, US Treasuries, and Bitcoin.
 
 ---
 
 ## Overview
 
-This document presents a comprehensive risk management framework for a five‑stock equally‑weighted Indian equity portfolio, covering the period from August 2021 to July 2026. The analysis employs advanced econometric techniques including:
+A complete, self-contained Python risk system for a five-asset equally 
+weighted portfolio (NIFTY 50, Gold, USDINR, 20+ Year Treasury, Bitcoin) 
+covering 10 years of daily data. The project implements every step of 
+quantitative risk validation—from stationarity tests and GARCH family 
+selection to Extreme Value Theory, multi-method backtesting (Kupiec, 
+Christoffersen, McNeil–Frey), Principal Component Analysis, dynamic 
+correlation analysis, and FRTB capital calculation. 
+The analysis employs advanced econometric techniques including:
 
 - **GARCH(1,1)‑t** and **EGARCH(1,1)‑t** models for volatility forecasting
 - **Rolling window Value‑at‑Risk (VaR)** and **Expected Shortfall (ES)** estimation
