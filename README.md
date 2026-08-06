@@ -250,7 +250,7 @@ $$m_c = 1.5 + 0.1 \times (5 - 4) = 1.60$$
 
 ### 7.3 Capital Charge
 
-$$\mathrm{Capital}_{1\text{-day}} = \max(\mathrm{ES}_{\text{latest}}, \mathrm{ES}_{\text{avg}}) \times m_c = 3.3095\% \times 1.60 = 5.2953\%$$
+$$\mathrm{Capital}_{1\text{-day}} = \max(\mathrm{ES}_{\text{latest}}, \mathrm{ES}_{\text{avg}}) \times m_c = 3.3095\text{\%} \times 1.60 = 5.2953\text{\%}$$
 
 **For a ₹10 crore portfolio, daily regulatory capital = ₹52.95 lakhs.**  
 A 10‑day charge (scaled by $\sqrt{10}$) would be ~16.74% of portfolio value.
