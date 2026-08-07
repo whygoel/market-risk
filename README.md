@@ -45,9 +45,7 @@ Daily adjusted close prices for the five assets are downloaded via `yfinance` fo
 ### 1.2 Individual Asset Log‑Returns
 Daily log‑returns are computed as  
 
-\[
-r_{i,t} = 100 \times \ln\!\left(\frac{P_{i,t}}{P_{i,t-1}}\right).
-\]
+$$r_{i,t}=100\ln\left(\frac{P_{i,t}}{P_{i,t-1}}\right)$$
 
 The resulting DataFrame contains 2,379 observations.
 
@@ -66,9 +64,7 @@ Crypto dominates in both mean and volatility; Treasury shows a negative mean due
 ### 1.3 Equally Weighted Portfolio Return
 The portfolio return is constructed using the exact method to avoid cross‑sectional aggregation bias: individual log‑returns are first converted to simple returns, equally weighted, and the portfolio simple return is then converted back to log‑return (in %):
 
-\[
-R_{p,t} = 100 \times \ln\!\left(1 + \frac{1}{5}\sum_{i=1}^5 (e^{r_{i,t}/100} - 1)\right).
-\]
+$$R_{p,t}=100\ln\left(1+\frac{1}{5}\sum_{i=1}^{5}\left(e^{r_{i,t}/100}-1\right)\right)$$
 
 **Portfolio Return Statistics**
 
@@ -142,11 +138,12 @@ EGARCH‑t has the lowest AIC, but its asymmetry parameter is completely insigni
 
 ### 3.4 Residual Diagnostics
 
-Standardised residuals \(z_t = \varepsilon_t / \sigma_t\) from the GARCH‑t model:
+Standardised residuals $$z_t=\frac{\varepsilon_t}{\sigma_t}$$ from the GARCH‑t model:
 
-* Mean = 0.0157, Std = 0.9881 → close to (0,1).
-* Ljung‑Box on \(z_t\): all p‑values > 0.14 → no remaining autocorrelation.
-* Ljung‑Box on \(z_t^2\): all p‑values > 0.41 → no remaining ARCH effects.
+- **Mean:** 0.0157
+- **Standard deviation:** 0.9881 (close to (0,1))
+- **Ljung–Box on $z_t$:** all p-values > 0.14 (no remaining autocorrelation)
+- **Ljung–Box on $z_t^2$:** all p-values > 0.41 (no remaining ARCH effects)
 
 ![ACF of standardised residuals and squared residuals](ACF%20of%20standardised%20residuals%20and%20squared%20residuals.png)  
 *Figure 3: ACF of standardised residuals and squared residuals – no significant spikes.*
@@ -181,7 +178,7 @@ The GARCH‑t VaR is higher than historical, reflecting current elevated volatil
 ## 5. Extreme Value Theory (EVT) – Peaks Over Threshold
 
 ### 5.1 Loss Series & Threshold
-Define loss \(L_t = -R_{p,t}\). The threshold \(u\) is chosen as the 95th percentile of losses (1.3855%), which is consistent with the historical 95% VaR. This yields 119 exceedances.
+Define loss $$L_t = -R_{p,t}$$. The threshold $$\(u\)$$ is chosen as the 95th percentile of losses (1.3855%), which is consistent with the historical 95% VaR. This yields 119 exceedances.
 
 ![Mean Excess Plot](Mean%20Excess%20Plot.png)  
 *Figure 5: Mean Excess Plot – linearity beyond ~1.4% supports the threshold.*
@@ -189,15 +186,13 @@ Define loss \(L_t = -R_{p,t}\). The threshold \(u\) is chosen as the 95th percen
 ### 5.2 GPD Fit
 Exceedances above the threshold are modelled by the Generalised Pareto Distribution:
 
-\[
-G(x) = 1 - \left(1 + \xi \frac{x}{\psi}\right)^{-1/\xi}
-\]
+$$G(x)=1-\left(1+\xi\frac{x}{\psi}\right)^{-1/\xi}$$
 
 Estimated parameters:
-* Shape \(\xi = 0.1821\) (heavy‑tailed, Fréchet domain)
-* Scale \(\psi = 0.6335\)
+- **Shape:** $\xi = 0.1821$ *(heavy-tailed, Fréchet domain)*
+- **Scale:** $\psi = 0.6335$
 
-A positive \(\xi\) confirms the loss distribution has a fat tail.
+A positive ($\xi>0$) confirms the loss distribution has a fat tail.
 
 ![QQ‑plot of exceedances vs GPD](QQ%E2%80%91plot%20of%20exceedances%20vs%20GPD.png)  
 *Figure 6: QQ‑plot of exceedances vs GPD – good fit except one extreme outlier.*
@@ -228,7 +223,7 @@ The last 250 trading days are held out. A rolling expanding‑window GARCH(1,1)�
 * **Christoffersen CC test**: LR = 0.20, p‑value = 0.6508 → breaches are independent.
 
 ### 6.3 ES Backtesting (McNeil‑Frey)
-The standardised excess \((L_t - \text{ES}_t) / \sigma_t\) on breach days has mean –0.59 and standard deviation 0.48. A one‑sample t‑test yields t = –2.46, p‑value = 0.0701. We fail to reject the null hypothesis of zero mean excess → **ES forecasts are unbiased** (slightly conservative, but statistically acceptable).
+The standardised excess $$\frac{L_t - \mathrm{ES}_t}{\sigma_t}$$ on breach days has mean –0.59 and standard deviation 0.48. A one‑sample t‑test yields t = –2.46, p‑value = 0.0701. We fail to reject the null hypothesis of zero mean excess → **ES forecasts are unbiased** (slightly conservative, but statistically acceptable).
 
 **Final Verdict: MODEL VALID** (conservative, but robust).
 
@@ -326,7 +321,7 @@ To capture time‑varying correlations beyond simple rolling windows, we impleme
 1. Fit GARCH(1,1)‑t to each asset individually and store the standardised residuals.
 2. Update the conditional correlation matrix via an EWMA recursion (λ = 0.94).
 
-The resulting daily 5×5 correlation matrices \(R_t\) (2,379 observations) reveal significant time‑variation for every asset pair.
+The resulting daily 5×5 correlation matrices $$R_t$$ (2,379 observations) reveal significant time‑variation for every asset pair.
 
 ![DCC Correlation Grid](DCC%20Correlation%20Grid.png)  
 *Figure 9: DCC correlations – all 10 pairs.*
@@ -362,17 +357,13 @@ The binding constraint is the **12‑month average ES** (3.2878%), which prevent
 ### 12.2 Backtesting Multiplier
 Five exceptions place the model in the **Yellow zone** (5‑9 exceptions). The multiplier is:
 
-\[
-m_c = 1.5 + 0.1 \times (5 - 4) = 1.60
-\]
+$$m_c = 1.5 + 0.1 \times (5 - 4) = 1.60$$
 
 *(The model’s conservatism may justify a lower multiplier upon regulatory review, but we adhere to the formula.)*
 
 ### 12.3 Capital Charge
 
-\[
-\text{Capital}_{\text{1‑day}} = \max(\text{ES}_{\text{latest}}, \text{ES}_{\text{avg}}) \times m_c = 3.2878\% \times 1.60 = 5.2606\%
-\]
+$$\text{Capital}_{\text{1-day}}=\max(\text{ES}_{\text{latest}},\text{ES}_{\text{avg}})\times m_c=3.2878\times1.60=5.2606$$
 
 **For a ₹10 crore portfolio, daily regulatory capital = ₹52.61 lakhs.**  
 Scaling by √10 gives a 10‑day capital charge of ~16.63% of portfolio value.
